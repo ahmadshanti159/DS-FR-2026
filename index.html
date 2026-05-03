@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>كاشف الوجوه </title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;800&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Cairo',sans-serif;background:#070b1a;color:#fff;overflow-x:hidden}
+.header{padding:14px;background:#101735;display:flex;justify-content:space-between;align-items:center}
+.header h1{font-size:18px;color:#00e5ff}
+#st{font-size:12px;padding:5px 10px;background:#0b1128;border-radius:8px}
+.wrap{padding:12px;max-width:500px;margin:auto;padding-bottom:80px}
+
+.vid-box{position:relative;width:100%;background:#000;border:2px solid #00e5ff33;border-radius:16px;overflow:hidden;aspect-ratio:4/3}
+#v{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;background:#000;display:block;z-index:1}
+#canvas{position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;pointer-events:none}
+#load{position:absolute;inset:0;background:#000d;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;font-size:14px;z-index:5}
+.spin{width:40px;height:40px;border:3px solid #333;border-top-color:#00e5ff;border-radius:50%;animation:s 1s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+
+.flash{position:absolute;inset:0;background:#fff;z-index:10;opacity:0;pointer-events:none}
+.flash.fire{animation:flashAnim .5s}
+@keyframes flashAnim{0%{opacity:0}20%{opacity:.9}100%{opacity:0}}
+
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.btn{padding:13px;border:none;border-radius:12px;font-weight:800;font-family:'Cairo';font-size:15px;cursor:pointer}
+.btn:disabled{opacity:.4}
+.b1{background:#00e5ff;color:#000}.b2{background:#ffb000;color:#000}
+.b3{background:#ff2d55;color:#fff}.b4{background:#1c2545;color:#fff;border:1px solid #334}
+.b5{background:linear-gradient(135deg,#00ff88,#00cc66);color:#000}
+
+.card{background:#101735;padding:12px;border-radius:12px;margin:10px 0;border-right:4px solid #555}
+.card.ok{border-color:#00ff88}
+.card.bad{border-color:#ff2d55;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 #ff2d5500}50%{box-shadow:0 0 20px #ff2d5599}}
+
+.wanted-fixed-btn{position:fixed;bottom:20px;left:20px;background:#ff2d55;color:#fff;border:none;border-radius:50px;padding:12px 20px;font-weight:800;font-family:'Cairo';cursor:pointer;box-shadow:0 0 15px #ff2d55aa;z-index:50;transition:0.2s;display:flex;align-items:center;gap:8px}
+.wanted-fixed-btn:active{transform:scale(0.96)}
+
+/* Modal عام */
+.modal-bg{position:fixed;inset:0;background:#000c;z-index:100;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(5px)}
+.modal-bg.show{display:flex}
+.modal{background:#101735;border:2px solid #ff2d55;border-radius:20px;padding:20px;width:100%;max-width:500px;max-height:85vh;overflow-y:auto;animation:pop .3s}
+@keyframes pop{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
+.modal h2{color:#ff2d55;margin-bottom:10px;font-size:20px}
+.modal h3{color:#00e5ff;margin:10px 0}
+.login-input{width:100%;padding:12px;margin:8px 0;background:#0b1128;border:1px solid #334;border-radius:10px;color:#fff;font-size:14px}
+.modal-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px}
+.wanted-item{display:flex;align-items:center;gap:10px;padding:12px;background:#0b1128;border-radius:12px;margin:6px 0;border:1px solid #1c2545}
+.wanted-info{flex:1}
+.wanted-info .nm{font-weight:800;font-size:15px}
+.wanted-info .rs{font-size:12px;color:#889}
+.del-btn{background:#ff2d5522;color:#ff2d55;border:1px solid #ff2d5544;padding:8px 12px;border-radius:10px;cursor:pointer}
+.empty-list{text-align:center;color:#445;padding:20px}
+#photoUploadArea{height:80px;border:2px dashed #334;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#667;cursor:pointer;margin:10px 0}
+#photoUploadArea img{width:100%;height:100%;object-fit:cover}
+.export-btns{display:flex;gap:10px;margin:15px 0}
+.preview-modal .preview-info{background:#0b1128;padding:10px;border-radius:10px;margin:10px 0;font-size:13px;text-align:right}
+.sound-toggle{display:flex;align-items:center;gap:10px;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="header"><h1>🔍 كاشف الوجوه </h1><span id="st">⏳ تحميل</span></div>
+
+<div class="wrap">
+  <div id="warnHttps" class="card" style="background:#ff2d5522;display:none">⚠️ يجب فتح الموقع عبر HTTPS!</div>
+
+  <div class="vid-box">
+    <video id="v" autoplay playsinline muted webkit-playsinline></video>
+    <canvas id="canvas"></canvas>
+    <div class="flash" id="flash"></div>
+    <div id="load"><div class="spin"></div><div id="loadTxt">تحميل النماذج...</div></div>
+  </div>
+
+  <div class="controls">
+    <button class="btn b1" id="bStart" disabled>📷 تشغيل الكاميرا</button>
+    <button class="btn b3" id="bStop" disabled>⏹ إيقاف الكاميرا</button>
+    <button class="btn b4" id="switchCam">🔄 تبديل الكاميرا</button>
+    <button class="btn b2" id="toggleScanBtn">▶️ بدء الفحص</button>
+    <button class="btn b5" id="captureBtn">📸 حفظ لقطة</button>
+  </div>
+
+  <div id="results" style="margin-top:10px"></div>
+  <div id="soundToggle" class="sound-toggle">
+    <span>🔊 صوت التنبيه:</span>
+    <label><input type="radio" name="sound" value="on" checked> مفعل</label>
+    <label><input type="radio" name="sound" value="off"> معطل</label>
+  </div>
+</div>
+
+<button class="wanted-fixed-btn" id="openWantedBtn">⚠️ Wanted</button>
+
+<!-- Modal تسجيل الدخول وإدارة المطلوبين -->
+<div class="modal-bg" id="wantedModal">
+  <div class="modal" id="wantedModalContent">
+    <div id="loginView">
+      <h2>🔐 دخول لإدارة المطلوبين</h2>
+      <input type="text" id="loginUsername" class="login-input" placeholder="Username" autocomplete="off">
+      <input type="password" id="loginPassword" class="login-input" placeholder="Password">
+      <div class="modal-btns">
+        <button class="btn b4" id="closeLoginBtn">إلغاء</button>
+        <button class="btn b1" id="doLoginBtn">دخول</button>
+      </div>
+    </div>
+    <div id="adminView" style="display:none">
+      <h2>⚠️ إدارة المطلوبين</h2>
+      <div>
+        <h3>➕ إضافة مطلوب جديد</h3>
+        <input type="text" id="wantedName" placeholder="الاسم" style="width:100%;margin-bottom:5px;padding:8px;background:#0b1128;border:1px solid #334;color:#fff;border-radius:8px">
+        <input type="text" id="wantedReason" placeholder="السبب" style="width:100%;margin-bottom:5px;padding:8px;background:#0b1128;border:1px solid #334;color:#fff;border-radius:8px">
+        <div id="photoUploadArea" onclick="document.getElementById('wantedPhotoFile').click()">📁 اضغط لاختيار صورة</div>
+        <input type="file" id="wantedPhotoFile" accept="image/*" hidden>
+        <button class="btn b1" style="width:100%;margin:8px 0" id="addWantedBtn">💾 حفظ المطلوب</button>
+      </div>
+      <div>
+        <h3>📋 قائمة المطلوبين</h3>
+        <div id="wantedListContainer"></div>
+      </div>
+      <div class="export-btns">
+        <button class="btn b4" id="exportDataBtn">📤 تصدير البيانات</button>
+        <button class="btn b4" id="importDataBtn">📥 استيراد البيانات</button>
+        <input type="file" id="importFile" accept=".json" hidden>
+      </div>
+      <div class="modal-btns">
+        <button class="btn b4" id="closeAdminBtn">إغلاق</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal معاينة اللقطة -->
+<div class="modal-bg" id="previewModal">
+  <div class="modal preview-modal" style="max-width:450px">
+    <h2>📸 اللقطة جاهزة</h2>
+    <img id="previewImg" src="" style="width:100%;border-radius:12px">
+    <div class="preview-info" id="previewInfo"></div>
+    <div class="modal-btns">
+      <button class="btn b4" id="closePreviewBtn">إلغاء</button>
+      <button class="btn b5" id="downloadShotBtn">💾 حفظ</button>
+    </div>
+    <button class="btn b1" id="shareShotBtn" style="width:100%;margin-top:8px">📤 مشاركة</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script>
+// ======================== الإعدادات العامة ========================
+const ADMIN_USER = "admin";
+const ADMIN_PASS = "597446688";
+const STORAGE_KEY = "wanted_persons_v8";
+
+let v = document.getElementById('v');
+let canvas = document.getElementById('canvas');
+let ctx = canvas.getContext('2d');
+let scanning = false;
+let scanInterval = null;
+let facing = 'user';
+let wanted = [];      // قائمة المطلوبين
+let stream = null;
+let modelsLoaded = false;
+let lastDetectionAlert = false; // لتجنب تكرار الصوت
+let soundEnabled = true;        // تفعيل الصوت افتراضياً
+
+// عناصر DOM
+let startBtn = document.getElementById('bStart');
+let stopBtn = document.getElementById('bStop');
+let switchCamBtn = document.getElementById('switchCam');
+let toggleScanBtn = document.getElementById('toggleScanBtn');
+let captureBtn = document.getElementById('captureBtn');
+let resultsDiv = document.getElementById('results');
+let openWantedBtn = document.getElementById('openWantedBtn');
+let wantedModal = document.getElementById('wantedModal');
+let loginView = document.getElementById('loginView');
+let adminView = document.getElementById('adminView');
+let wantedListContainer = document.getElementById('wantedListContainer');
+let soundRadios = document.querySelectorAll('input[name="sound"]');
+
+// ======================== حفظ وتحميل البيانات ========================
+function saveToStorage() {
+  let data = wanted.map(p => ({
+    id: p.id,
+    name: p.name,
+    reason: p.reason,
+    desc: Array.from(p.desc)
+  }));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+function loadFromStorage() {
+  let raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return;
+  try {
+    let data = JSON.parse(raw);
+    wanted = data.map(p => ({
+      id: p.id,
+      name: p.name,
+      reason: p.reason,
+      desc: new Float32Array(p.desc)
+    }));
+    renderWantedList();
+  } catch(e) { console.error(e); }
+}
+
+// ======================== تحميل نماذج face-api ========================
+async function loadModels() {
+  try {
+    // استخدام نموذج مستقر من GitHub
+    const modelUrl = 'https://justadudewhohacks.github.io/face-api.js/models';
+    await faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl);
+    await faceapi.nets.faceLandmark68Net.loadFromUri(modelUrl);
+    await faceapi.nets.faceRecognitionNet.loadFromUri(modelUrl);
+    modelsLoaded = true;
+    document.getElementById('load').style.display = 'none';
+    startBtn.disabled = false;
+    setStatus('✅ جاهز');
+    loadFromStorage();
+  } catch(e) {
+    document.getElementById('loadTxt').textContent = 'فشل تحميل النماذج ❌';
+    setStatus('خطأ في النماذج');
+    console.error(e);
+  }
+}
+
+function setStatus(txt) {
+  document.getElementById('st').textContent = txt;
+}
+
+// ======================== الكاميرا ========================
+async function startCamera() {
+  if (!modelsLoaded) { alert('الرجاء الانتظار حتى تحميل النماذج'); return; }
+  if (stream) stopCamera();
+  try {
+    setStatus('⏳ فتح الكاميرا...');
+    let constraints = { video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 } } };
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    v.srcObject = stream;
+    await v.play();
+    setTimeout(() => {
+      canvas.width = v.videoWidth || 640;
+      canvas.height = v.videoHeight || 480;
+      setStatus('📷 تعمل');
+      stopBtn.disabled = false;
+    }, 300);
+  } catch(err) {
+    setStatus('❌ فشل');
+    alert('تعذر الوصول للكاميرا: ' + err.message);
+  }
+}
+
+function stopCamera() {
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+    v.srcObject = null;
+  }
+  if (scanning) toggleScan(); // إيقاف الفحص إذا كان نشطاً
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  resultsDiv.innerHTML = '';
+  setStatus('⏹ الكاميرا متوقفة');
+  stopBtn.disabled = true;
+  startBtn.disabled = false;
+}
+
+async function switchCamera() {
+  facing = (facing === 'user') ? 'environment' : 'user';
+  if (stream) await startCamera();
+  else alert('شغّل الكاميرا أولاً');
+}
+
+// ======================== الفحص المستمر والمقارنة ========================
+async function performDetection() {
+  if (!stream || !v.videoWidth || !v.videoHeight) return;
+  if (!modelsLoaded) return;
+
+  try {
+    let detections = await faceapi.detectAllFaces(v, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+      .withFaceLandmarks()
+      .withFaceDescriptors();
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    resultsDiv.innerHTML = '';
+    let foundWanted = false;
+    let alertName = '';
+
+    for (let det of detections) {
+      let box = det.detection.box;
+      let bestMatch = null;
+      let bestDist = 1;
+      for (let p of wanted) {
+        let dist = faceapi.euclideanDistance(det.descriptor, p.desc);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestMatch = p;
+        }
+      }
+      let isWanted = (bestMatch && bestDist < 0.55);
+      let label = isWanted ? `🚨 ${bestMatch.name}` : '✅ آمن';
+      let color = isWanted ? '#ff2d55' : '#00ff88';
+      ctx.strokeStyle = color;
+      ctx.lineWidth = isWanted ? 4 : 2;
+      ctx.strokeRect(box.x, box.y, box.width, box.height);
+      ctx.fillStyle = color;
+      ctx.font = 'bold 20px Cairo';
+      ctx.fillText(label, box.x, box.y - 8);
+
+      if (isWanted) {
+        foundWanted = true;
+        alertName = bestMatch.name;
+        // عرض نتيجة في الأسفل
+        let card = document.createElement('div');
+        card.className = 'card bad';
+        card.innerHTML = `<b>🚨 ${bestMatch.name}</b><div style="font-size:13px">تطابق ${Math.round((1-bestDist)*100)}%</div><div>📝 ${bestMatch.reason}</div>`;
+        resultsDiv.appendChild(card);
+      } else {
+        let card = document.createElement('div');
+        card.className = 'card ok';
+        card.innerHTML = `<b>✅ شخص آمن</b><div style="font-size:13px">لا يتطابق مع المطلوبين</div>`;
+        resultsDiv.appendChild(card);
+      }
+    }
+
+    if (foundWanted) {
+      if (!lastDetectionAlert) {
+        lastDetectionAlert = true;
+        if (soundEnabled) {
+          let audio = new Audio('data:audio/wav;base64,U3RlYWx0aCBzb3VuZA=='); // صوت صامت لتجنب الحظر، بدلاً من ذلك نستخدم "beep" عبر Web Audio API بسيط
+          // عمل بيب بسيط
+          try {
+            let context = new (window.AudioContext || window.webkitAudioContext)();
+            let oscillator = context.createOscillator();
+            let gain = context.createGain();
+            oscillator.connect(gain);
+            gain.connect(context.destination);
+            oscillator.frequency.value = 880;
+            gain.gain.value = 0.3;
+            oscillator.start();
+            gain.gain.exponentialRampToValueAtTime(0.00001, context.currentTime + 0.5);
+            oscillator.stop(context.currentTime + 0.5);
+            setTimeout(() => context.close(), 600);
+          } catch(e) { console.log("صوت غير متاح"); }
+        }
+        setStatus(`🚨 تنبيه: ${alertName} مطلوب!`);
+      }
+    } else {
+      if (lastDetectionAlert) {
+        lastDetectionAlert = false;
+        setStatus('🎥 المراقبة نشطة - آمن');
+      }
+    }
+    if (!foundWanted && detections.length === 0 && resultsDiv.innerHTML === '') {
+      resultsDiv.innerHTML = '<div class="card">👀 لم يتم اكتشاف وجوه</div>';
+    }
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+function toggleScan() {
+  if (!stream || !v.videoWidth) { alert('شغّل الكاميرا أولاً'); return; }
+  scanning = !scanning;
+  toggleScanBtn.textContent = scanning ? '⏹ إيقاف الفحص' : '▶️ بدء الفحص';
+  if (scanning) {
+    if (scanInterval) clearInterval(scanInterval);
+    scanInterval = setInterval(() => performDetection(), 1200);
+  } else {
+    if (scanInterval) clearInterval(scanInterval);
+    scanInterval = null;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    resultsDiv.innerHTML = '';
+  }
+}
+
+// ======================== لقطة وتحليل ========================
+let lastShotBlob = null, lastShotUrl = null, lastShotInfo = '';
+
+async function captureAndSave() {
+  if (!stream || !v.videoWidth) { alert('شغّل الكاميرا أولاً'); return; }
+  let flashDiv = document.getElementById('flash');
+  flashDiv.classList.remove('fire');
+  void flashDiv.offsetWidth;
+  flashDiv.classList.add('fire');
+  setStatus('📸 التقطت صورة...');
+
+  let shotCanvas = document.createElement('canvas');
+  shotCanvas.width = v.videoWidth;
+  shotCanvas.height = v.videoHeight;
+  let sctx = shotCanvas.getContext('2d');
+  sctx.drawImage(v, 0, 0);
+  
+  let detections = [];
+  if (wanted.length) {
+    try {
+      detections = await faceapi.detectAllFaces(shotCanvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 320 }))
+        .withFaceLandmarks().withFaceDescriptors();
+    } catch(e) {}
+  }
+  let wantedCount = 0, safeCount = 0;
+  let summary = [];
+  for (let d of detections) {
+    let box = d.detection.box;
+    let best = null, bestDist = 1;
+    for (let p of wanted) {
+      let dist = faceapi.euclideanDistance(d.descriptor, p.desc);
+      if (dist < bestDist) { bestDist = dist; best = p; }
+    }
+    let match = best && bestDist < 0.55;
+    sctx.strokeStyle = match ? '#ff2d55' : '#00ff88';
+    sctx.lineWidth = 5;
+    sctx.strokeRect(box.x, box.y, box.width, box.height);
+    let label = match ? `🚨 ${best.name}` : '✅ آمن';
+    sctx.font = 'bold 28px Cairo';
+    let tw = sctx.measureText(label).width;
+    sctx.fillStyle = match ? '#ff2d55' : '#00ff88';
+    sctx.fillRect(box.x, box.y-42, tw+20, 40);
+    sctx.fillStyle = '#fff';
+    sctx.fillText(label, box.x+10, box.y-10);
+    if (match) { wantedCount++; summary.push(`🚨 ${best.name} - ${best.reason}`); }
+    else { safeCount++; summary.push(`✅ شخص آمن`); }
+  }
+  // علامة مائية
+  let now = new Date();
+  let pad = n=>String(n).padStart(2,'0');
+  let dateStr = `${pad(now.getDate())}/${pad(now.getMonth()+1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  sctx.fillStyle = 'rgba(0,0,0,0.7)';
+  sctx.fillRect(0, shotCanvas.height-60, shotCanvas.width, 60);
+  sctx.fillStyle = '#00e5ff';
+  sctx.font = '22px Cairo';
+  sctx.fillText(`🔍 كاشف الوجوه | ${dateStr}`, 15, shotCanvas.height-25);
+  
+  shotCanvas.toBlob(blob => {
+    if (!blob) return;
+    if (lastShotUrl) URL.revokeObjectURL(lastShotUrl);
+    lastShotBlob = blob;
+    lastShotUrl = URL.createObjectURL(blob);
+    let info = `<b>📊 ملخص اللقطة:</b><br>👥 عدد الأشخاص: ${detections.length}<br>`;
+    if (wantedCount) info += `<span style="color:#ff2d55">🚨 مطلوبين: ${wantedCount}</span><br>`;
+    if (safeCount) info += `<span style="color:#00ff88">✅ آمنين: ${safeCount}</span><br>`;
+    info += summary.join('<br>') + `<br><small>${dateStr}</small>`;
+    lastShotInfo = info;
+    document.getElementById('previewImg').src = lastShotUrl;
+    document.getElementById('previewInfo').innerHTML = info;
+    document.getElementById('previewModal').classList.add('show');
+    setStatus('✅ اللقطة جاهزة');
+  }, 'image/jpeg', 0.92);
+}
+
+function downloadShot() {
+  if (!lastShotBlob) return;
+  let now = new Date();
+  let fname = `shot_${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}_${now.getHours()}-${now.getMinutes()}-${now.getSeconds()}.jpg`;
+  let a = document.createElement('a');
+  a.href = lastShotUrl;
+  a.download = fname;
+  a.click();
+  setStatus('تم الحفظ');
+}
+
+function shareShot() {
+  if (!lastShotBlob) return;
+  let file = new File([lastShotBlob], 'shot.jpg', {type: 'image/jpeg'});
+  if (navigator.share) navigator.share({files: [file], title: 'لقطة كاشف الوجوه'}).catch(e=>{});
+  else alert('المشاركة غير مدعومة');
+}
+
+function closePreview() {
+  document.getElementById('previewModal').classList.remove('show');
+}
+
+// ======================== إدارة المطلوبين (الصفحة الثانوية) ========================
+function renderWantedList() {
+  if (!wantedListContainer) return;
+  if (wanted.length === 0) {
+    wantedListContainer.innerHTML = '<div class="empty-list">📭 لا يوجد مطلوبين</div>';
+    return;
+  }
+  wantedListContainer.innerHTML = wanted.map(p => `
+    <div class="wanted-item">
+      <div style="font-size:24px">👤</div>
+      <div class="wanted-info">
+        <div class="nm">${escapeHtml(p.name)}</div>
+        <div class="rs">${escapeHtml(p.reason)}</div>
+      </div>
+      <button class="del-btn" data-id="${p.id}">🗑️</button>
+    </div>
+  `).join('');
+  // ربط أزرار الحذف
+  document.querySelectorAll('.del-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      let id = parseInt(btn.getAttribute('data-id'));
+      deleteWantedById(id);
+    });
+  });
+}
+
+function escapeHtml(str) { return str.replace(/[&<>]/g, function(m){if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
+
+function deleteWantedById(id) {
+  wanted = wanted.filter(p => p.id !== id);
+  saveToStorage();
+  renderWantedList();
+  alert('تم الحذف');
+}
+
+let currentPhotoData = null;
+document.getElementById('wantedPhotoFile').addEventListener('change', async (e) => {
+  let file = e.target.files[0];
+  if (!file) return;
+  let reader = new FileReader();
+  reader.onload = (ev) => {
+    currentPhotoData = ev.target.result;
+    document.getElementById('photoUploadArea').innerHTML = `<img src="${currentPhotoData}" style="width:100%;height:100%;object-fit:cover">`;
+  };
+  reader.readAsDataURL(file);
+});
+
+document.getElementById('addWantedBtn').addEventListener('click', async () => {
+  let name = document.getElementById('wantedName').value.trim();
+  if (!name || !currentPhotoData) { alert('الاسم والصورة مطلوبان'); return; }
+  let reason = document.getElementById('wantedReason').value.trim() || 'غير محدد';
+  try {
+    let img = await faceapi.fetchImage(currentPhotoData);
+    let detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 416 })).withFaceLandmarks().withFaceDescriptor();
+    if (!detection) { alert('❌ لا يوجد وجه واضح في الصورة'); return; }
+    let newId = Date.now();
+    wanted.push({
+      id: newId,
+      name: name,
+      reason: reason,
+      desc: detection.descriptor
+    });
+    saveToStorage();
+    renderWantedList();
+    // reset form
+    document.getElementById('wantedName').value = '';
+    document.getElementById('wantedReason').value = '';
+    currentPhotoData = null;
+    document.getElementById('photoUploadArea').innerHTML = '📁 اضغط لاختيار صورة';
+    alert('✅ تمت الإضافة');
+  } catch(e) { alert('خطأ: ' + e.message); }
+});
+
+// تصدير واستيراد
+document.getElementById('exportDataBtn').addEventListener('click', () => {
+  let data = wanted.map(p => ({id:p.id, name:p.name, reason:p.reason, desc:Array.from(p.desc)}));
+  let blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  let a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'wanted_backup.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+document.getElementById('importDataBtn').addEventListener('click', () => {
+  document.getElementById('importFile').click();
+});
+document.getElementById('importFile').addEventListener('change', (e) => {
+  let file = e.target.files[0];
+  if (!file) return;
+  let reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      let imported = JSON.parse(ev.target.result);
+      let newWanted = imported.map(p => ({id:p.id, name:p.name, reason:p.reason, desc:new Float32Array(p.desc)}));
+      wanted = newWanted;
+      saveToStorage();
+      renderWantedList();
+      alert('تم استيراد البيانات');
+    } catch(ex) { alert('ملف غير صالح'); }
+  };
+  reader.readAsText(file);
+});
+
+// ======================== المصادقة وإظهار المودال ========================
+function showWantedModal() {
+  loginView.style.display = 'block';
+  adminView.style.display = 'none';
+  document.getElementById('loginUsername').value = '';
+  document.getElementById('loginPassword').value = '';
+  wantedModal.classList.add('show');
+}
+
+document.getElementById('doLoginBtn').addEventListener('click', () => {
+  let user = document.getElementById('loginUsername').value.trim();
+  let pass = document.getElementById('loginPassword').value.trim();
+  if (user === ADMIN_USER && pass === ADMIN_PASS) {
+    loginView.style.display = 'none';
+    adminView.style.display = 'block';
+    renderWantedList();
+  } else {
+    alert('اسم المستخدم أو كلمة السر غير صحيحة');
+  }
+});
+document.getElementById('closeLoginBtn').addEventListener('click', () => {
+  wantedModal.classList.remove('show');
+});
+document.getElementById('closeAdminBtn').addEventListener('click', () => {
+  wantedModal.classList.remove('show');
+});
+openWantedBtn.addEventListener('click', showWantedModal);
+// إغلاق المودال بالضغط على الخلفية
+wantedModal.addEventListener('click', (e) => { if(e.target === wantedModal) wantedModal.classList.remove('show'); });
+
+// ======================== إعدادات الصوت ========================
+soundRadios.forEach(radio => {
+  radio.addEventListener('change', (e) => {
+    soundEnabled = (document.querySelector('input[name="sound"]:checked').value === 'on');
+  });
+});
+soundEnabled = true;
+
+// ======================== ربط الأزرار ========================
+startBtn.addEventListener('click', startCamera);
+stopBtn.addEventListener('click', stopCamera);
+switchCamBtn.addEventListener('click', switchCamera);
+toggleScanBtn.addEventListener('click', toggleScan);
+captureBtn.addEventListener('click', captureAndSave);
+document.getElementById('closePreviewBtn').addEventListener('click', closePreview);
+document.getElementById('downloadShotBtn').addEventListener('click', downloadShot);
+document.getElementById('shareShotBtn').addEventListener('click', shareShot);
+document.getElementById('previewModal').addEventListener('click', (e) => { if(e.target.id === 'previewModal') closePreview(); });
+
+// ======================== بدء التطبيق ========================
+loadModels();
+</script>
+</body>
+</html>
