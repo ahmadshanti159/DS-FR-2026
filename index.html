@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>كاشف الوجوه </title>
+<title>كاشف الوجوه V8 - صفارة شرطة</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@600;800&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -62,7 +62,7 @@ body{font-family:'Cairo',sans-serif;background:#070b1a;color:#fff;overflow-x:hid
 </style>
 </head>
 <body>
-<div class="header"><h1>🔍 كاشف الوجوه </h1><span id="st">⏳ تحميل</span></div>
+<div class="header"><h1>🔍 كاشف الوجوه V8 🚨</h1><span id="st">⏳ تحميل</span></div>
 
 <div class="wrap">
   <div id="warnHttps" class="card" style="background:#ff2d5522;display:none">⚠️ يجب فتح الموقع عبر HTTPS!</div>
@@ -84,7 +84,7 @@ body{font-family:'Cairo',sans-serif;background:#070b1a;color:#fff;overflow-x:hid
 
   <div id="results" style="margin-top:10px"></div>
   <div id="soundToggle" class="sound-toggle">
-    <span>🔊 صوت التنبيه:</span>
+    <span>🚨 صوت صفارة الشرطة:</span>
     <label><input type="radio" name="sound" value="on" checked> مفعل</label>
     <label><input type="radio" name="sound" value="off"> معطل</label>
   </div>
@@ -157,11 +157,11 @@ let ctx = canvas.getContext('2d');
 let scanning = false;
 let scanInterval = null;
 let facing = 'user';
-let wanted = [];      // قائمة المطلوبين
+let wanted = [];
 let stream = null;
 let modelsLoaded = false;
-let lastDetectionAlert = false; // لتجنب تكرار الصوت
-let soundEnabled = true;        // تفعيل الصوت افتراضياً
+let lastDetectionAlert = false;
+let soundEnabled = true;
 
 // عناصر DOM
 let startBtn = document.getElementById('bStart');
@@ -176,6 +176,67 @@ let loginView = document.getElementById('loginView');
 let adminView = document.getElementById('adminView');
 let wantedListContainer = document.getElementById('wantedListContainer');
 let soundRadios = document.querySelectorAll('input[name="sound"]');
+
+// ======================== صوت صفارة الشرطة (Web Audio API) ========================
+let sirenContext = null;
+let sirenOscillator = null;
+let sirenGain = null;
+let sirenTimeout = null;
+
+function stopSiren() {
+  if (sirenTimeout) clearTimeout(sirenTimeout);
+  if (sirenOscillator) {
+    try {
+      sirenOscillator.stop();
+    } catch(e) {}
+    sirenOscillator = null;
+  }
+  if (sirenContext) {
+    sirenContext.close().catch(e=>{});
+    sirenContext = null;
+  }
+}
+
+function playPoliceSiren() {
+  if (!soundEnabled) return;
+  stopSiren(); // إيقاف أي صفارة سابقة
+  
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    sirenContext = new AudioContext();
+    sirenGain = sirenContext.createGain();
+    sirenGain.connect(sirenContext.destination);
+    sirenGain.gain.value = 0.4; // مستوى الصوت مناسب
+    
+    let startTime = sirenContext.currentTime;
+    let duration = 2.5; // مدة الصفارة 2.5 ثانية
+    
+    // صفارة شرطة بتغيير التردد بين 800 و 1600 هرتز بشكل متقطع (وي وي)
+    // سنقوم بإنشاء oscillator جديد كل نصف ثانية لتغيير التردد بشكل حاد
+    let times = [0, 0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.1, 2.4];
+    let freqs = [800, 1600, 800, 1600, 800, 1600, 800, 1600, 800];
+    
+    for (let i = 0; i < times.length; i++) {
+      let osc = sirenContext.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = freqs[i];
+      let oscGain = sirenContext.createGain();
+      oscGain.gain.value = 0.4;
+      osc.connect(oscGain);
+      oscGain.connect(sirenContext.destination);
+      osc.start(startTime + times[i]);
+      osc.stop(startTime + times[i] + 0.25);
+    }
+    
+    // إيقاف الصوت بعد المدة
+    sirenTimeout = setTimeout(() => {
+      stopSiren();
+    }, duration * 1000);
+    
+  } catch(e) {
+    console.warn("صوت الصفارة غير مدعوم:", e);
+  }
+}
 
 // ======================== حفظ وتحميل البيانات ========================
 function saveToStorage() {
@@ -203,10 +264,9 @@ function loadFromStorage() {
   } catch(e) { console.error(e); }
 }
 
-// ======================== تحميل نماذج face-api ========================
+// ======================== تحميل النماذج ========================
 async function loadModels() {
   try {
-    // استخدام نموذج مستقر من GitHub
     const modelUrl = 'https://justadudewhohacks.github.io/face-api.js/models';
     await faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl);
     await faceapi.nets.faceLandmark68Net.loadFromUri(modelUrl);
@@ -255,7 +315,7 @@ function stopCamera() {
     stream = null;
     v.srcObject = null;
   }
-  if (scanning) toggleScan(); // إيقاف الفحص إذا كان نشطاً
+  if (scanning) toggleScan();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   resultsDiv.innerHTML = '';
   setStatus('⏹ الكاميرا متوقفة');
@@ -269,7 +329,7 @@ async function switchCamera() {
   else alert('شغّل الكاميرا أولاً');
 }
 
-// ======================== الفحص المستمر والمقارنة ========================
+// ======================== الفحص المستمر ========================
 async function performDetection() {
   if (!stream || !v.videoWidth || !v.videoHeight) return;
   if (!modelsLoaded) return;
@@ -308,7 +368,6 @@ async function performDetection() {
       if (isWanted) {
         foundWanted = true;
         alertName = bestMatch.name;
-        // عرض نتيجة في الأسفل
         let card = document.createElement('div');
         card.className = 'card bad';
         card.innerHTML = `<b>🚨 ${bestMatch.name}</b><div style="font-size:13px">تطابق ${Math.round((1-bestDist)*100)}%</div><div>📝 ${bestMatch.reason}</div>`;
@@ -324,28 +383,13 @@ async function performDetection() {
     if (foundWanted) {
       if (!lastDetectionAlert) {
         lastDetectionAlert = true;
-        if (soundEnabled) {
-          let audio = new Audio('data:audio/wav;base64,U3RlYWx0aCBzb3VuZA=='); // صوت صامت لتجنب الحظر، بدلاً من ذلك نستخدم "beep" عبر Web Audio API بسيط
-          // عمل بيب بسيط
-          try {
-            let context = new (window.AudioContext || window.webkitAudioContext)();
-            let oscillator = context.createOscillator();
-            let gain = context.createGain();
-            oscillator.connect(gain);
-            gain.connect(context.destination);
-            oscillator.frequency.value = 880;
-            gain.gain.value = 0.3;
-            oscillator.start();
-            gain.gain.exponentialRampToValueAtTime(0.00001, context.currentTime + 0.5);
-            oscillator.stop(context.currentTime + 0.5);
-            setTimeout(() => context.close(), 600);
-          } catch(e) { console.log("صوت غير متاح"); }
-        }
+        playPoliceSiren();  // صفارة شرطة
         setStatus(`🚨 تنبيه: ${alertName} مطلوب!`);
       }
     } else {
       if (lastDetectionAlert) {
         lastDetectionAlert = false;
+        stopSiren();
         setStatus('🎥 المراقبة نشطة - آمن');
       }
     }
@@ -369,6 +413,7 @@ function toggleScan() {
     scanInterval = null;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     resultsDiv.innerHTML = '';
+    stopSiren(); // إيقاف الصوت إذا كان يعمل
   }
 }
 
@@ -468,7 +513,7 @@ function closePreview() {
   document.getElementById('previewModal').classList.remove('show');
 }
 
-// ======================== إدارة المطلوبين (الصفحة الثانوية) ========================
+// ======================== إدارة المطلوبين ========================
 function renderWantedList() {
   if (!wantedListContainer) return;
   if (wanted.length === 0) {
@@ -485,7 +530,6 @@ function renderWantedList() {
       <button class="del-btn" data-id="${p.id}">🗑️</button>
     </div>
   `).join('');
-  // ربط أزرار الحذف
   document.querySelectorAll('.del-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       let id = parseInt(btn.getAttribute('data-id'));
@@ -532,7 +576,6 @@ document.getElementById('addWantedBtn').addEventListener('click', async () => {
     });
     saveToStorage();
     renderWantedList();
-    // reset form
     document.getElementById('wantedName').value = '';
     document.getElementById('wantedReason').value = '';
     currentPhotoData = null;
@@ -541,7 +584,6 @@ document.getElementById('addWantedBtn').addEventListener('click', async () => {
   } catch(e) { alert('خطأ: ' + e.message); }
 });
 
-// تصدير واستيراد
 document.getElementById('exportDataBtn').addEventListener('click', () => {
   let data = wanted.map(p => ({id:p.id, name:p.name, reason:p.reason, desc:Array.from(p.desc)}));
   let blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
@@ -571,7 +613,7 @@ document.getElementById('importFile').addEventListener('change', (e) => {
   reader.readAsText(file);
 });
 
-// ======================== المصادقة وإظهار المودال ========================
+// ======================== المصادقة ========================
 function showWantedModal() {
   loginView.style.display = 'block';
   adminView.style.display = 'none';
@@ -598,13 +640,13 @@ document.getElementById('closeAdminBtn').addEventListener('click', () => {
   wantedModal.classList.remove('show');
 });
 openWantedBtn.addEventListener('click', showWantedModal);
-// إغلاق المودال بالضغط على الخلفية
 wantedModal.addEventListener('click', (e) => { if(e.target === wantedModal) wantedModal.classList.remove('show'); });
 
 // ======================== إعدادات الصوت ========================
 soundRadios.forEach(radio => {
   radio.addEventListener('change', (e) => {
     soundEnabled = (document.querySelector('input[name="sound"]:checked').value === 'on');
+    if (!soundEnabled) stopSiren();
   });
 });
 soundEnabled = true;
